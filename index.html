@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WeissyEditor</title>
+    
+    <!-- Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/lib/marked.umd.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    
+    <!-- CodeMirror -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.20/codemirror.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.20/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.20/addon/mode/overlay.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.20/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.20/mode/markdown/markdown.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.20/mode/gfm/gfm.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.20/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.20/mode/css/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.20/mode/htmlmixed/htmlmixed.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.20/theme/neo.min.css">
+    
+    <!-- Utilities -->
+    <script src="https://unpkg.com/prettier@3.7.4/standalone.js"></script>
+    <script src="https://unpkg.com/prettier@3.7.4/plugins/estree.js"></script>
+    <script src="https://unpkg.com/prettier@3.7.4/plugins/babel.js"></script>
+    <script src="https://unpkg.com/prettier@3.7.4/plugins/markdown.js"></script>
+    <script src="https://unpkg.com/prettier@3.7.4/plugins/html.js"></script>
+    <script src="https://unpkg.com/prettier@3.7.4/plugins/postcss.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    
+    <style id="live-custom-css"></style>
+    <style>
+        :root{--ui-bg:#f3f4f6;--ui-border:#e5e7eb;--primary:#2563eb;--danger:#dc2626;--text:#374151}
+        *{box-sizing:border-box}
+        body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;height:100vh;display:flex;flex-direction:column;background:var(--ui-bg);color:var(--text)}
+        .toolbar{background:#fff;border-bottom:1px solid var(--ui-border);padding:0 1rem;display:flex;gap:1rem;align-items:center;justify-content:space-between;height:50px;flex-shrink:0;box-shadow:0 1px 2px rgba(0,0,0,0.05);z-index:10}
+        .tab-group{display:flex;height:100%;gap:.5rem}
+        .tab-btn{background:transparent;border:none;padding:0 1rem;cursor:pointer;font-weight:600;color:#6b7280;border-bottom:3px solid transparent;height:100%;transition:all .2s;font-size:.9rem}
+        .tab-btn:hover{color:#111827}
+        .tab-btn.active{color:var(--primary);border-bottom-color:var(--primary)}
+        .controls{display:flex;gap:.5rem;align-items:center}
+        input[type="text"]{padding:.4rem .6rem;border:1px solid var(--ui-border);border-radius:4px;width:180px;font-size:13px}
+        .btn{padding:.4rem .8rem;background:var(--primary);color:white;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:500;transition:background .2s}
+        .btn:hover{background-color:#1d4ed8}
+        .btn-secondary{background:#f3f4f6;color:#374151;border:1px solid var(--ui-border)}
+        .btn-secondary:hover{background:#e5e7eb}
+        
+        /* Dropdown */
+        .dropdown{position:relative;display:inline-flex;align-items:center;height:100%}
+        .dropdown-content{display:none;position:absolute;right:0;top:100%;background-color:#fff;min-width:200px;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:20;border-radius:6px;border:1px solid var(--ui-border);overflow:hidden;margin-top:0;}
+        .dropdown-content::before{content:"";position:absolute;top:-12px;left:-10px;right:-10px;height:12px;background:transparent;}
+        .dropdown:hover .dropdown-content{display:block}
+        
+        .dropdown-item{color:var(--text);padding:10px 16px;text-decoration:none;display:block;cursor:pointer;font-size:13px;transition:background .15s}
+        .dropdown-item:hover{background-color:#f9fafb;color:var(--primary)}
+        
+        /* Dynamic Mode Styles */
+        .dropdown-item.active-mode { color: var(--primary); font-weight: 600; background-color: #f0f9ff; cursor: default; }
+        .dropdown-item.danger { color: var(--danger); }
+        .dropdown-item.danger:hover { background-color: #fee2e2; }
+
+
+        .modal{display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;background-color:rgba(0,0,0,0.5);align-items:center;justify-content:center}
+        .modal.active{display:flex}
+        .modal-content{background-color:#fff;padding:2rem;border-radius:8px;max-width:600px;width:90%;box-shadow:0 4px 20px rgba(0,0,0,0.3)}
+        .modal-header{font-size:1.25rem;font-weight:600;margin-bottom:1rem;color:var(--text)}
+        .modal-body{margin-bottom:1.5rem}
+        .share-link-input{width:100%;padding:.75rem;border:1px solid var(--ui-border);border-radius:4px;font-size:13px;font-family:monospace;background:#f9fafb;word-break:break-all}
+        .modal-footer{display:flex;gap:.5rem;justify-content:flex-end}
+        .workspace{display:flex;flex:1;height:calc(100vh - 50px);overflow:hidden;position:relative}
+        .editor-pane{flex:1;border-right:1px solid var(--ui-border);display:flex;flex-direction:column;position:relative;min-width:0;background:#fff}
+        .editor-container{position:absolute;top:0;left:0;width:100%;height:100%;display:none;flex-direction:column}
+        .editor-container.active{display:flex}
+        .CodeMirror {flex: 1; height: 100%; font-family: 'SF Mono', 'Menlo', 'Monaco', monospace; font-size: 14px; line-height: 1.6; cursor: text;}
+        .CodeMirror-cursor {border-right: 1px solid white !important; border-left: 2px solid black !important; width: 0 !important;}
+        .cm-s-neo .cm-emoji{color:#009688}
+        .preview-pane{flex:1;overflow-y:auto;padding:0;background:#fff;min-width:0;scroll-behavior:smooth; position: relative;}
+        .markdown-body { padding: 2rem; }
+        iframe.preview-frame { width: 100%; height: 100%; border: none; background: white; }
+        .drag-overlay::after{content:"Drop File here";position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(37,99,235,0.95);color:white;display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:bold;z-index:100;pointer-events:none;backdrop-filter:blur(2px)}
+        .markdown-body table{width:100%!important;display:table!important}
+        .markdown-body pre{background-color:#f6f8fa!important;border-radius:6px}
+        .katex{font-size:1.1em}
+        .divider{width:1px;height:24px;background:var(--ui-border);margin:0 4px}
+        @media (max-width:768px){.workspace{flex-direction:column}.editor-pane{border-right:none;border-bottom:1px solid var(--ui-border);flex:1}.preview-pane{flex:1;padding:0;border-top:4px solid #f3f4f6}.controls input[type="text"]{display:none}.divider{display:none}}
+    </style>
+</head>
+<body>
+<div class="toolbar">
+    <div class="tab-group">
+        <button class="tab-btn active" onclick="switchTab('main')" id="tab-main">WeissyEditor</button>
+        <button class="tab-btn" onclick="switchTab('css')" id="tab-css">CSS</button>
+    </div>
+    <div class="controls">
+        <!-- MODE SWITCHER -->
+        <div class="dropdown">
+            <button class="btn btn-secondary" id="mode-btn">Mode: Markdown ▾</button>
+            <div class="dropdown-content">
+                <!-- Items are updated dynamically via JS -->
+                <div class="dropdown-item" id="opt-md" onclick="switchEditorMode('markdown')">Markdown</div>
+                <div class="dropdown-item" id="opt-html" onclick="switchEditorMode('html')">HTML</div>
+            </div>
+        </div>
+
+
+        <div class="divider"></div>
+
+
+        <input type="text" id="cssUrl" placeholder="CSS URL (e.g., cdnjs...)">
+        <button class="btn btn-secondary" onclick="fetchAndLoadCss()" title="Load CSS from URL">Load CSS</button>
+
+
+        <div class="divider"></div>
+
+
+        <div class="dropdown">
+            <button class="btn btn-secondary">Format Code ▾</button>
+            <div class="dropdown-content">
+                <div class="dropdown-item" onclick="formatMain()">Format .md/.html</div>
+                <div class="dropdown-item" onclick="formatCss()">Format .css</div>
+            </div>
+        </div>
+        
+        <div class="dropdown">
+            <button class="btn">Export / Share ▾</button>
+            <div class="dropdown-content">
+                <div class="dropdown-item" onclick="showShareDialog()">Share URL (Encode)</div>
+                <div class="dropdown-item" onclick="openHtmlPreview()">Open Preview in New Tab</div>
+                <div class="dropdown-item" onclick="downloadMain()">Download .md/.html</div>
+                <div class="dropdown-item" onclick="downloadCss()">Download .css</div>
+            </div>
+        </div>
+        
+        <div class="dropdown">
+            <button class="btn btn-secondary" style="color:var(--danger);">Reset ▾</button>
+            <div class="dropdown-content">
+                <div class="dropdown-item" ondblclick="resetEditor('main')" title="Double-click to confirm">Reset Content (2x click)</div>
+                <div class="dropdown-item" ondblclick="resetEditor('css')" title="Double-click to confirm">Reset CSS (2x click)</div>
+                <div class="dropdown-item danger" ondblclick="resetEditor('all')" title="Double-click to confirm">Reset Everything (2x click)</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<div class="workspace" id="dropZone">
+    <div class="editor-pane">
+        <div id="main-container" class="editor-container active"><textarea id="editor" placeholder="Type here..."></textarea></div>
+        <div id="css-container" class="editor-container"><textarea id="css-editor" placeholder="/* Global CSS */"></textarea></div>
+    </div>
+    <div class="preview-pane" id="preview-scroll-container"></div>
+</div>
+
+
+<div id="shareModal" class="modal"><div class="modal-content"><div class="modal-header">Share Link</div><div class="modal-body"><textarea id="shareLinkInput" class="share-link-input" readonly rows="4"></textarea></div><div class="modal-footer"><button class="btn" onclick="copyShareLink()">Copy Link</button><button class="btn btn-secondary" onclick="closeShareDialog()">Close</button></div></div></div>
+
+
+<script>
+// --- DOM & CONSTANTS ---
+const $ = id => document.getElementById(id);
+const $$ = sel => document.querySelectorAll(sel);
+const STORAGE_KEYS = { CONTENT: 'content', CSS: 'css', URL: 'cloudflare_css_url', MODE: 'editor_mode' };
+
+
+const DEFAULTS = {
+    CSS_URL: "https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.8.1/github-markdown.min.css",
+    MARKDOWN: `Document Title
+=============
+
+
+Drag and drop \`.md\` files to load content or CSS files in the CSS tab (so we'll never go out of style).
+
+Use \`Format Code\` > \`Format .md/.html\` to format your document.
+
+
+## Text Formatting
+
+- **Bold**, _Italic_, and \`Mono-space Oddity...\`
+- [Links to websites](https://www.youtube.com/watch?v=dQw4w9WgXcQ)
+- Strikethrough: ~~mistake.. yeah, is it too late now to say sorry?~~
+
+> Blockquotes can span multiple lines:
+> **One**, nothing wrong with me!
+> **Two**, nothing wrong with me!
+> **Three**, nothing wrong with me!
+> **Four**, nothing wrong with me!
+
+## Lists and Code
+
+1. Four legs good, two legs bad
+2. All animals are equal
+   - But some animals are more equal than others
+   - No animal shall sleep in a bed with sheets (except the Pigs)
+
+\`\`\`javascript
+function helloZanarkand() {
+  console.log("最後かもしれないだろ？だから 全部話しておきたいんだ...");
+  return true;
+}
+\`\`\`
+
+## Math (KaTeX)
+
+Inline math: $E = mc^2$
+
+Display block math:
+$$ \\int_0^\\infty e^{-x^2} dx = \\frac{\\sqrt{\\pi}}{2} $$
+
+## Tables
+
+| Character      | Status      | Description                                      | Notes                      |
+| :------------- | :---------- | :----------------------------------------------- | :------------------------- |
+| Kaine          | ⚠️ Unstable | Struggling to control her possessed side.        | Monitor emotional state    |
+| Popola         | ✅ Active   | Providing support and watching over the village. | Available for quests       |
+| Grimoire Weiss | ❌ Offline  | Currently complaining about being called a book. | Requires immediate apology |
+
+---
+
+LICENSE: MIT License / Copyright (c) 2025 @fractuscontext
+
+_Permission is granted to use this material. No need to breach university servers or face a 35-year "lecture" on "ethics."_
+`,
+    HTML: `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+</head>
+<body>
+  <h1>Langton's Ant</h1>
+  <p><small><i>This is a sample document. You can drag and drop a \`.html\` file anywhere on this screen... if you've been having these weird thoughts lately, like, is any of this for real, or not?</i></small></p>
+    <div class="controls">
+        <label for="size">Canvas size:</label>
+        <select id="size">
+            <option value="400" selected>400×400</option>
+            <option value="600">600×600</option>
+            <option value="800">800×800</option>
+        </select>
+
+        <label for="rule">Rule:</label>
+        <input id="rule" type="text" value="RRLLLRLLLRRR" placeholder="R/L pattern" maxlength="32">
+
+        <label for="cell">Cell size:</label>
+        <input id="cell" type="number" value="3" min="1" max="20" style="width:70px">
+
+        <label for="speed">Speed:</label>
+        <input id="speed" type="range" min="1" max="1000" value="5" style="width:150px">
+
+        <button onclick="thesims.init()">Start</button>
+        <button onclick="thesims.paused = !thesims.paused">Pause</button>
+        <button onclick="thesims.clear()">Clear</button>
+
+        <span id="stats">Steps: 0</span>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const thesims = {
+            canvas: document.getElementById('canvas'),
+            ctx: null,
+            grid: null,
+            ant: { x: 0, y: 0, dir: 0 },
+            dirs: [[0,-1], [1,0], [0,1], [-1,0]],
+            steps: 0,
+            paused: false,
+            
+            init() {
+                const size = parseInt(document.getElementById('size').value);
+                this.canvas.width = this.canvas.height = size;
+                this.ctx = this.canvas.getContext('2d');
+                
+                const rule = document.getElementById('rule').value.toUpperCase().replace(/[^RL]/g, '') || 'RL';
+                this.cellSize = parseInt(document.getElementById('cell').value);
+                this.rules = rule.split('');
+                this.colors = this.goldenHues(this.rules.length);
+                
+                this.cols = Math.ceil(size / this.cellSize);
+                this.rows = Math.ceil(size / this.cellSize);
+                this.grid = new Uint8Array(this.cols * this.rows).fill(0);
+                
+                this.ant = { x: Math.floor(this.cols/2), y: Math.floor(this.rows/2), dir: 0 };
+                this.ctx.fillStyle = this.colors[0];
+                this.ctx.fillRect(0, 0, size, size);
+                this.steps = 0;
+                this.paused = false;
+                this.loop();
+            },
+            
+            goldenHues(n) {
+                const c = ['#fff'], phi = 0.618033988749895;
+                let h = Math.random();
+                for(let i = 1; i < n; i++) {
+                    h = (h + phi) % 1;
+                    c.push(\`hsl(\${h*360}, 85%, 55%)\`);
+                }
+                return c;
+            },
+            
+            step() {
+                const {x, y, dir} = this.ant;
+                const i = y * this.cols + x;
+                const s = this.grid[i];
+                
+                this.ant.dir = (dir + (this.rules[s] === 'R' ? 1 : 3)) % 4;
+                const ns = (s + 1) % this.rules.length;
+                this.grid[i] = ns;
+                
+                this.ctx.fillStyle = this.colors[ns];
+                this.ctx.fillRect(x * this.cellSize, y * this.cellSize, this.cellSize, this.cellSize);
+                
+                const [dx, dy] = this.dirs[this.ant.dir];
+                this.ant.x = (x + dx + this.cols) % this.cols;
+                this.ant.y = (y + dy + this.rows) % this.rows;
+                this.steps++;
+            },
+            
+            loop() {
+                if (!this.paused) {
+                    const speed = parseInt(document.getElementById('speed').value);
+                    for(let i = 0; i < speed; i++) this.step();
+                    document.getElementById('stats').textContent = \`Steps: \${this.steps.toLocaleString()}\`;
+                }
+                requestAnimationFrame(() => this.loop());
+            },
+            
+            clear() {
+                this.paused = true;
+                this.ctx.fillStyle = '#fff';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                this.steps = 0;
+                document.getElementById('stats').textContent = 'Steps: 0';
+            }
+        };
+        
+        thesims.init();
+    <\/script>
+</body>
+</html>`,
+    HTML_CSS: `body {
+  margin: 0;
+  padding: 20px;
+  font-family: sans-serif;
+  background: #1a1a1a;
+  color: #fff;
+}
+.controls {
+  margin-bottom: 15px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+input,
+select,
+button {
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #444;
+  background: #2a2a2a;
+  color: #fff;
+}
+button {
+  cursor: pointer;
+  background: #00d4ff;
+  color: #000;
+  font-weight: bold;
+  border: none;
+}
+button:hover {
+  background: #6be4ff;
+}
+canvas {
+  background: #fff;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+  image-rendering: pixelated;
+  display: block;
+}`
+};
+
+
+let currentMode = 'markdown';
+
+
+// ENCODING, you know, totally not stolen from PlantUML
+// and i have no idea how this works
+const CHARSET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_';
+const encode6bit = (b1,b2,b3) => [b1>>2, ((b1&0x3)<<4)|(b2>>4), ((b2&0xF)<<2)|(b3>>6), b3&0x3F].map(i => CHARSET[i]).join('');
+const plantumlEncode = text => {
+    const utf8 = new TextEncoder().encode(text);
+    const compressed = pako.deflateRaw(utf8, { level: 9 });
+    return Array.from({ length: Math.ceil(compressed.length / 3) }, (_, i) => encode6bit(compressed[i * 3], compressed[i * 3 + 1] || 0, compressed[i * 3 + 2] || 0)).join('');
+};
+const decode6bit = (s,i) => {
+    const [c1,c2,c3,c4] = s.slice(i,i+4).split('').map(c => CHARSET.indexOf(c));
+    return [(c1<<2)|((c2>>4)&0x3), ((c2&0xF)<<4)|((c3>>2)&0xF), ((c3&0x3)<<6)|c4];
+};
+const plantumlDecode = e => {
+    try {
+        const bytes = Array.from({ length: Math.floor(e.length / 4) }, (_, i) => decode6bit(e, i * 4)).flat();
+        return new TextDecoder().decode(pako.inflateRaw(new Uint8Array(bytes)));
+    } catch { return null; }
+};
+
+
+// --- EDITOR SETUP ---
+const createEditor = (id, config) => CodeMirror.fromTextArea($(id), { lineNumbers: true, lineWrapping: true, theme: "neo", ...config });
+const mainEditor = createEditor("editor", { mode: "gfm" });
+const cssEditor = createEditor("css-editor", { mode: "css" });
+
+
+// --- UI UPDATER ---
+const updateModeUI = () => {
+    const btn = $('mode-btn');
+    const optMd = $('opt-md');
+    const optHtml = $('opt-html');
+
+
+    btn.textContent = `Mode: ${currentMode === 'markdown' ? 'Markdown' : 'HTML'} ▾`;
+
+
+    optMd.className = 'dropdown-item';
+    optHtml.className = 'dropdown-item';
+
+
+    if (currentMode === 'markdown') {
+        optMd.classList.add('active-mode');
+        optMd.textContent = "✓ Markdown";
+        optHtml.classList.add('danger');
+        optHtml.textContent = "Switch to HTML (Reset)";
+    } else {
+        optHtml.classList.add('active-mode');
+        optHtml.textContent = "✓ HTML";
+        optMd.classList.add('danger');
+        optMd.textContent = "Switch to Markdown (Reset)";
+    }
+};
+
+
+// --- MODE SWITCHING ---
+const switchEditorMode = (newMode) => {
+    if (currentMode === newMode) return;
+    
+    if (!confirm(`Switch to ${newMode.toUpperCase()} mode?\n\nHeads up: You'll lose everything, backup now and don't look back in anger.`)) {
+        return;
+    }
+
+    currentMode = newMode;
+    localStorage.setItem(STORAGE_KEYS.MODE, newMode);
+    
+    if (newMode === 'markdown') {
+        mainEditor.setOption("mode", { name: "gfm", gitHubSpice: true, taskLists: true });
+        mainEditor.setValue(DEFAULTS.MARKDOWN);
+        // Default to CDN CSS for Markdown
+        $('cssUrl').value = DEFAULTS.CSS_URL;
+        fetchAndLoadCss();
+    } else {
+        mainEditor.setOption("mode", "htmlmixed");
+        mainEditor.setValue(DEFAULTS.HTML);
+        // Default to Empty URL + Custom CSS for HTML
+        $('cssUrl').value = '';
+        cssEditor.setValue(DEFAULTS.HTML_CSS);
+    }
+    
+    updateModeUI();
+    updatePreview();
+};
+
+
+// --- PREVIEW LOGIC ---
+const debounce = (fn, delay) => { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), delay) } };
+
+const updatePreview = debounce(() => {
+    const content = mainEditor.getValue();
+    const css = cssEditor.getValue();
+    localStorage.setItem(STORAGE_KEYS.CONTENT, content);
+    
+    const container = $('preview-scroll-container');
+
+    if (currentMode === 'markdown') {
+        // Just content for the live preview div
+        container.innerHTML = `<div class="markdown-body" id="md-preview-content"></div>`;
+        const mdContainer = $('md-preview-content');
+        mdContainer.innerHTML = marked.parse(content);
+        mdContainer.querySelectorAll('pre code').forEach(hljs.highlightElement);
+        if(window.renderMathInElement) renderMathInElement(mdContainer, { delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}] });
+    } else {
+        // For HTML Live Preview: We use an iframe.
+        // We reuse the generator logic to ensure consistency.
+        const iframeHtml = generateStandaloneHtml();
+        container.innerHTML = `<iframe class="preview-frame" sandbox="allow-scripts allow-same-origin allow-modals"></iframe>`;
+        container.querySelector('iframe').srcdoc = iframeHtml;
+    }
+}, 300);
+
+
+const updateHarryStyles = () => {
+    const css = cssEditor.getValue();
+    $('live-custom-css').textContent = css;
+    localStorage.setItem(STORAGE_KEYS.CSS, css);
+    if(currentMode === 'html') updatePreview();
+};
+
+
+mainEditor.on("change", updatePreview);
+cssEditor.on("change", updateHarryStyles);
+
+
+// --- SYNC SCROLLING ---
+mainEditor.on("scroll", () => {
+    const { top, height, clientHeight } = mainEditor.getScrollInfo();
+    const pct = top / (height - clientHeight);
+    const container = $('preview-scroll-container');
+    if (currentMode === 'markdown') {
+        container.scrollTop = pct * (container.scrollHeight - container.clientHeight);
+    }
+});
+
+
+// --- STATE LOADING ---
+const loadState = () => {
+    const urlParams = new URLSearchParams(location.search);
+    const urlContent = urlParams.get('content') || urlParams.get('md');
+    const urlCss = urlParams.get('css');
+    const urlCssLink = urlParams.get('cssUrl');
+    const hasUrlParams = urlContent || urlCss || urlCssLink;
+    const savedContent = localStorage.getItem(STORAGE_KEYS.CONTENT);
+
+
+    let loadFromUrl = hasUrlParams;
+    if (hasUrlParams && savedContent) {
+        if (!confirm("You have saved work. Loading from this link will overwrite it. Continue?\n(Be careful! Don't be an American Idiot!)")) {
+            loadFromUrl = false;
+        }
+    }
+
+
+    if (loadFromUrl) {
+        const savedMode = urlParams.get('mode') || 'markdown';
+        currentMode = (savedMode === 'html') ? 'html' : 'markdown';
+        
+        if (currentMode === 'markdown') mainEditor.setOption("mode", { name: "gfm", gitHubSpice: true });
+        else mainEditor.setOption("mode", "htmlmixed");
+
+
+        if (urlContent) mainEditor.setValue(plantumlDecode(urlContent) || "");
+        if (urlCss) cssEditor.setValue(plantumlDecode(urlCss) || "");
+        if (urlCssLink) $('cssUrl').value = decodeURIComponent(urlCssLink);
+
+
+        const newUrl = location.protocol + "//" + location.host + location.pathname;
+        window.history.replaceState({path: newUrl}, '', newUrl);
+
+
+    } else {
+        const savedMode = localStorage.getItem(STORAGE_KEYS.MODE) || 'markdown';
+        currentMode = (savedMode === 'html') ? 'html' : 'markdown';
+        
+        if (currentMode === 'markdown') mainEditor.setOption("mode", { name: "gfm", gitHubSpice: true });
+        else mainEditor.setOption("mode", "htmlmixed");
+        
+        mainEditor.setValue(savedContent || (currentMode === 'html' ? DEFAULTS.HTML : DEFAULTS.MARKDOWN));
+        
+        // Handle CSS loading strategy
+        const savedCss = localStorage.getItem(STORAGE_KEYS.CSS);
+        const savedUrl = localStorage.getItem(STORAGE_KEYS.URL);
+        
+        if (currentMode === 'html') {
+             // HTML mode: prefer saved CSS, fallback to HTML_CSS, and clear URL if not explicitly saved
+             $('cssUrl').value = savedUrl || ''; 
+             cssEditor.setValue(savedCss || DEFAULTS.HTML_CSS);
+        } else {
+            // Markdown mode: prefer saved CSS, fallback to CDN fetch
+            $('cssUrl').value = savedUrl || DEFAULTS.CSS_URL;
+            if(savedCss) cssEditor.setValue(savedCss); else fetchAndLoadCss();
+        }
+    }
+    
+    updateModeUI();
+    switchTab('main');
+};
+
+
+// --- ACTIONS ---
+const formatMain = async () => {
+    try {
+        const parser = currentMode === 'markdown' ? 'markdown' : 'html';
+        mainEditor.setValue(await prettier.format(mainEditor.getValue(), { parser, plugins: prettierPlugins }));
+    } catch(e) { alert("Format Error: " + e.message); }
+};
+const formatCss = async () => {
+    try {
+        cssEditor.setValue(await prettier.format(cssEditor.getValue(), { parser: "css", plugins: prettierPlugins }));
+    } catch(e) { alert("Format Error: " + e.message); }
+};
+
+
+const resetEditor = target => {
+    if(target === 'main' || target === 'all') {
+        mainEditor.setValue(currentMode === 'html' ? DEFAULTS.HTML : DEFAULTS.MARKDOWN);
+        localStorage.removeItem(STORAGE_KEYS.CONTENT);
+    }
+    if(target === 'css' || target === 'all') {
+        // Mode-specific reset for CSS
+        if (currentMode === 'markdown') {
+            $('cssUrl').value = DEFAULTS.CSS_URL;
+            fetchAndLoadCss();
+        } else {
+            $('cssUrl').value = '';
+            cssEditor.setValue(DEFAULTS.HTML_CSS);
+        }
+        localStorage.removeItem(STORAGE_KEYS.CSS);
+        localStorage.removeItem(STORAGE_KEYS.URL);
+    }
+};
+
+
+const switchTab = tab => {
+    $$('.tab-btn, .editor-container').forEach(e => e.classList.remove('active'));
+    $(`tab-${tab}`).classList.add('active');
+    $(`${tab === 'main' ? 'main' : 'css'}-container`).classList.add('active');
+    setTimeout(() => (tab === 'main' ? mainEditor : cssEditor).refresh(), 1);
+};
+
+
+// --- HELPER: GENERATE ROBUST HTML ---
+const generateStandaloneHtml = () => {
+    const css = cssEditor.getValue();
+    const content = mainEditor.getValue();
+    const isMd = currentMode === 'markdown';
+    
+    // Dependencies to inject
+    const hljsCss = '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">';
+    const hljsJs = '<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"><\/script>';
+    const katexCss = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">';
+    const katexJs = '<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"><\/script><script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"><\/script>';
+    const initScript = `
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            if(window.hljs) hljs.highlightAll();
+            if(window.renderMathInElement) renderMathInElement(document.body);
+        });
+    <\/script>`;
+
+    // If it's Markdown, parse it and wrap it
+    if (isMd) {
+        return `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Exported Markdown</title>
+    ${hljsCss}
+    ${katexCss}
+    <style>
+        body { box-sizing: border-box; min-width: 200px; max-width: 980px; margin: 0 auto; padding: 45px; }
+        @media (max-width: 767px) { body { padding: 15px; } }
+        ${css}
+    </style>
+</head>
+<body>
+    <div class="markdown-body">
+        ${marked.parse(content)}
+    </div>
+    ${hljsJs}
+    ${katexJs}
+    ${initScript}
+</body>
+</html>`;
+    }
+
+    // If it's HTML, check if it's a full document
+    const lowerContent = content.toLowerCase();
+    if (lowerContent.includes('<html') && lowerContent.includes('<body')) {
+        // It's a full document. We need to inject our stuff into head/body.
+        let processed = content;
+        
+        // Inject CSS/Libs into head
+        const headEnd = processed.indexOf('</head>');
+        const injection = `
+        ${hljsCss}
+        ${katexCss}
+        <style>${css}</style>
+        `;
+        if (headEnd !== -1) {
+            processed = processed.slice(0, headEnd) + injection + processed.slice(headEnd);
+        } else {
+            // No head? Just prepend to body or string
+            processed = injection + processed;
+        }
+
+        // Inject JS init into end of body
+        const bodyEnd = processed.indexOf('</body>');
+        const scriptInjection = `
+        ${hljsJs}
+        ${katexJs}
+        ${initScript}
+        `;
+        if (bodyEnd !== -1) {
+            processed = processed.slice(0, bodyEnd) + scriptInjection + processed.slice(bodyEnd);
+        } else {
+            processed += scriptInjection;
+        }
+        return processed;
+    } else {
+        // HTML Fragment
+        return `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Exported HTML</title>
+    ${hljsCss}
+    ${katexCss}
+    <style>
+        body { margin: 20px; }
+        ${css}
+    </style>
+</head>
+<body>
+    <div class="markdown-body">
+        ${content}
+    </div>
+    ${hljsJs}
+    ${katexJs}
+    ${initScript}
+</body>
+</html>`;
+    }
+};
+
+// --- SHARE / EXPORT ---
+const showShareDialog = () => {
+    const [c, s, u] = [mainEditor.getValue(), cssEditor.getValue(), $('cssUrl').value.trim()];
+    const url = `${location.origin}${location.pathname}?mode=${currentMode}&content=${plantumlEncode(c)}&css=${plantumlEncode(s)}${u?`&cssUrl=${encodeURIComponent(u)}`:''}`;
+    $('shareLinkInput').value = url;
+    $('shareModal').classList.add('active');
+};
+const closeShareDialog = () => $('shareModal').classList.remove('active');
+const copyShareLink = () => { 
+    $('shareLinkInput').select(); 
+    document.execCommand('copy');
+    const btn = event.target;
+    const orig = btn.textContent;
+    btn.textContent = "Copied!";
+    setTimeout(() => btn.textContent = orig, 1500);
+};
+$('shareModal').onclick = e => e.target === e.currentTarget && closeShareDialog();
+
+
+const downloadMain = () => {
+    if (currentMode === 'markdown') {
+        // Download Source .md with embedded CSS style block
+        const css = cssEditor.getValue();
+        const content = mainEditor.getValue();
+        // Prepend CSS in a style block (Pandoc/GitHub compat)
+        const fileContent = `<style>\n${css}\n</style>\n\n${content}`;
+        download(fileContent, 'text/markdown', 'document.md');
+    } else {
+        // Download Standalone .html
+        download(generateStandaloneHtml(), 'text/html', 'document.html');
+    }
+};
+const downloadCss = () => download(cssEditor.getValue(), 'text/css', 'styles.css');
+const download = (content, type, name) => {
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([content], {type})), download: name });
+    a.click();
+};
+
+
+const openHtmlPreview = () => {
+    const html = generateStandaloneHtml();
+    const win = window.open(); 
+    win.document.write(html); 
+    win.document.close();
+};
+
+
+// --- CSS LOADER & DRAG DROP ---
+const fetchAndLoadCss = async () => {
+    const u = $('cssUrl').value.trim();
+    if(!u) return;
+    localStorage.setItem(STORAGE_KEYS.URL, u);
+    try { const r = await fetch(u); if(r.ok) cssEditor.setValue(await r.text()); } catch(e){ console.error('CSS Load Error:', e); }
+};
+
+
+const dz = $('dropZone');
+['dragenter','dragover','dragleave','drop'].forEach(e => dz.addEventListener(e, ev => { ev.preventDefault(); ev.stopPropagation(); }));
+dz.ondrop = e => {
+    [...e.dataTransfer.files].forEach(f => {
+        const r = new FileReader();
+        r.onload = ev => {
+            if(f.name.endsWith('.css')) { cssEditor.setValue(ev.target.result); switchTab('css'); }
+            else { mainEditor.setValue(ev.target.result); switchTab('main'); }
+        };
+        r.readAsText(f);
+    });
+};
+
+
+// INIT
+loadState();
+setTimeout(updatePreview, 100);
+</script>
+</body>
+</html>
