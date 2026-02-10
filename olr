@@ -1,0 +1,779 @@
+
+
+# Part 4: Ordinal Logistic Regression
+
+**From Likert Scales to Meaningful Models**
+
+This note walks us through Ordinal Logistic Regression (OLR), the right tool when our survey outcome is ordered categories (e.g., "Strongly Disagree" → "Strongly Agree"). We build up from what you already know: simple linear regression ($y = mx + c$), through the logic of binary logistic regression, to the full ordinal model.
+
+
+## 4.1 Why You Can't Just Use Linear Regression on Survey Ratings
+
+Suppose our survey asks: *"How likely are you to apply to graduate school?"* with three options:
+
+| Code | Response |
+|------|----------|
+| 1 | Unlikely |
+| 2 | Somewhat Likely |
+| 3 | Very Likely |
+
+We might be tempted to treat these numbers (1, 2, 3) as continuous and run $Y = \beta_0 + \beta_1 X$. Here's why that's a problem:
+
+### Problem 1: The Numbers Are a Convenient Lie
+
+Assigning 1, 2, 3 **assumes equal spacing** between categories. But is the psychological distance between "Unlikely" and "Somewhat Likely" the same as between "Somewhat Likely" and "Very Likely"? Almost certainly not. The jump from indifference to genuine interest may be much larger than from interest to strong interest—or vice versa.
+
+### Problem 2: Predictions Make No Sense
+
+Linear regression will happily predict $\hat{Y} = 2.63$. What is a "2.63" level of likelihood? It doesn't correspond to any actual response. Worse, it might predict $\hat{Y} = 0.4$ or $\hat{Y} = 3.8$—values outside our response scale entirely.
+
+### Problem 3: Assumptions Guaranteed Violated
+
+- **Non-normality**: Residuals from a discrete 3-category outcome cannot be normally distributed
+- **Heteroscedasticity**: The variance of errors at each level of $X$ depends on which category people fall into
+- **Non-linearity**: The true relationship between a predictor and an ordered outcome is inherently non-linear
+
+### When Treating as Continuous Is (Pragmatically) Okay
+
+Some researchers argue that with **7 or more categories** and roughly equal spacing, treating ordinal data as continuous is an acceptable approximation. But with 3–5 categories (typical Likert items), we need ordinal methods. Always justify our choice.
+
+---
+
+## 4.2 Why Binary Logistic Regression Isn't Enough Either
+
+We might think: "I'll just collapse categories! 'Somewhat Likely' and 'Very Likely' become 'Likely,' and 'Unlikely' stays 'Unlikely.' Now I have a binary outcome—done!"
+
+This works, but we **throw away information about intensity**. The student who is "Very Likely" to apply is meaningfully different from the one who is only "Somewhat Likely." Collapsing them treats these students as identical.
+
+Alternatively, we could run **separate binary logistic regressions** for each boundary:
+
+- Model A: "Unlikely" vs. "Somewhat Likely or Very Likely"
+- Model B: "Unlikely or Somewhat Likely" vs. "Very Likely"
+
+But these models are **fit independently**, ignoring the fact that the categories are ordered. We'd get two sets of coefficients with no guarantee they tell a coherent story.
+
+**What we need**: A single model that respects the ordering, doesn't assume equal spacing, and estimates one coherent set of effects.
+
+That model is **Ordinal Logistic Regression** (also called the Proportional Odds Model or Cumulative Logit Model).
+
+---
+
+## 4.3 The Building Blocks: Probability → Odds → Log-Odds
+
+Before the ordinal model makes sense, we need three concepts from binary logistic regression. If $Y = mx + c$ is the only equation we know, this section bridges we to the new maths.
+
+### 4.3.1 Thinking in Probabilities
+
+In linear regression, we predict a number: "predicted house price = \$350,000." In logistic regression, we predict a **probability**: "probability this student applies = 0.72."
+
+- $P = 0$: impossible
+- $P = 0.5$: coin flip
+- $P = 1$: certain
+
+Probabilities must stay between 0 and 1. Linear regression can't guarantee this (it predicts from $-\infty$ to $+\infty$). We need a transformation.
+
+### 4.3.2 What Are Odds?
+
+**Odds** convert probability into a ratio of "how likely vs. how unlikely":
+
+$$
+\text{Odds} = \frac{P}{1 - P}
+$$
+
+| Probability ($P$) | Odds | In Words |
+|---|---|---|
+| 0.50 | $\frac{0.50}{0.50} = 1.0$ | Even odds (50-50) |
+| 0.75 | $\frac{0.75}{0.25} = 3.0$ | 3 to 1 in favour |
+| 0.20 | $\frac{0.20}{0.80} = 0.25$ | 1 to 4 against |
+| 0.90 | $\frac{0.90}{0.10} = 9.0$ | 9 to 1 in favour |
+
+**Converting back**: $P = \frac{\text{Odds}}{1 + \text{Odds}}$
+
+Odds range from $0$ to $+\infty$. Still not ideal for a linear equation (we need $-\infty$ to $+\infty$).
+
+### 4.3.3 What Are Log-Odds (The Logit)?
+
+Take the natural logarithm of the odds:
+
+$$
+\text{logit}(P) = \ln\left(\frac{P}{1 - P}\right)
+$$
+
+| Probability ($P$) | Odds | Log-Odds (Logit) |
+|---|---|---|
+| 0.50 | 1.0 | $\ln(1.0) = 0$ |
+| 0.75 | 3.0 | $\ln(3.0) = 1.10$ |
+| 0.20 | 0.25 | $\ln(0.25) = -1.39$ |
+| 0.90 | 9.0 | $\ln(9.0) = 2.20$ |
+| 0.01 | 0.01 | $\ln(0.01) = -4.60$ |
+| 0.99 | 99.0 | $\ln(99.0) = 4.60$ |
+
+**Key properties of log-odds:**
+- Range: $-\infty$ to $+\infty$ ← now we can use linear equations!
+- Symmetric: $P = 0.5$ maps to logit $= 0$
+- $P < 0.5$ gives negative logit; $P > 0.5$ gives positive logit
+
+### 4.3.4 Why This Chain of Transformations?
+
+$$
+\underbrace{P}_{\text{bounded: } [0,1]} \xrightarrow{\text{odds}} \underbrace{\frac{P}{1-P}}_{\text{bounded: } [0,\infty)} \xrightarrow{\ln} \underbrace{\ln\left(\frac{P}{1-P}\right)}_{\text{unbounded: } (-\infty,\infty)}
+$$
+
+Now we can write a familiar-looking linear equation:
+
+$$
+\ln\left(\frac{P}{1-P}\right) = \beta_0 + \beta_1 X
+$$
+
+The left side (log-odds) can take any value from $-\infty$ to $+\infty$, so no matter what $\beta_0 + \beta_1 X$ produces, the implied probability will always be between 0 and 1. This is the **logit link function**—it links probabilities to a linear model.
+
+### 4.3.5 The Sigmoid (S-Shaped) Curve
+
+If we solve for $P$, we get:
+
+$$
+P = \frac{1}{1 + e^{-(\beta_0 + \beta_1 X)}}
+$$
+
+This is the **sigmoid function**. It produces an S-shaped curve:
+
+```
+P(Y=1)
+1.0 |                          ___________
+    |                        /
+    |                      /
+0.5 |                    /          ← steepest here
+    |                  /
+    |                /
+0.0 |_______________/
+    +-----|-----|-----|-----|-----|→ X
+        low                  high
+```
+
+**Properties:**
+- Always between 0 and 1
+- Steepest at $P = 0.5$ (most uncertain region)
+- Flattens near 0 and 1 (approaching but never reaching the boundaries)
+
+This is binary logistic regression in a nutshell. Now we extend it to ordered categories.
+
+---
+
+## 4.4 From Binary to Ordinal: Cumulative Probabilities
+
+### 4.4.1 The Key Insight: Cumulative Thinking
+
+In binary logistic regression, we model $P(Y = 1)$ vs. $P(Y = 0)$—two categories.
+
+For ordinal outcomes, we shift our thinking from **"probability of being in a specific category"** to **"probability of being at or below a specific category."**
+
+This is a **cumulative probability**: $P(Y \leq j)$.
+
+### 4.4.2 Worked Example
+
+Using the graduate school application data with three ordered categories:
+
+| Category ($j$) | Label | $P(Y = j)$ | Cumulative $P(Y \leq j)$ |
+|---|---|---|---|
+| 1 | Unlikely | 0.55 | 0.55 |
+| 2 | Somewhat Likely | 0.35 | $0.55 + 0.35 = 0.90$ |
+| 3 | Very Likely | 0.10 | $0.55 + 0.35 + 0.10 = 1.00$ |
+
+Notice:
+- $P(Y \leq 1) = P(\text{Unlikely})$
+- $P(Y \leq 2) = P(\text{Unlikely}) + P(\text{Somewhat Likely})$
+- $P(Y \leq 3) = 1.00$ always (certainty—everyone falls somewhere)
+
+Because the last cumulative probability is always 1, we only need to model the first $J - 1$ cumulative probabilities. With 3 categories, that's 2 equations.
+
+### 4.4.3 Why Cumulative Probabilities Respect Ordering
+
+By modeling $P(Y \leq j)$, we're asking: *"What's the probability of being at this level or lower?"* This inherently respects the ordering—you can't be "at or below Good" without passing through "Unacceptable" and "Acceptable" first. We don't need to assume equal spacing; we only use the ordering.
+
+---
+
+## 4.5 The Ordinal Logistic Regression Model
+
+### 4.5.1 The Equation
+
+We apply the logit link to each cumulative probability:
+
+$$
+\ln\left(\frac{P(Y \leq j)}{P(Y > j)}\right) = \alpha_j - \beta_1 X_1 - \beta_2 X_2 - \cdots
+$$
+
+or equivalently, in the notation many textbooks use:
+
+$$
+\text{logit}\big(P(Y \leq j)\big) = \alpha_j - (\beta_1 X_1 + \beta_2 X_2 + \cdots)
+$$
+
+for each category boundary $j = 1, 2, \ldots, J-1$.
+
+<details>
+<summary><b>⚠️ Important Note on Sign Conventions</b></summary>
+
+Different software and textbooks use different sign conventions. The equation above (with **minus** signs on the $\beta$'s) is how R's `polr` function parameterises the model. Other software (e.g., Stata, SPSS) may write:
+
+$$
+\text{logit}\big(P(Y \leq j)\big) = \alpha_j + \beta_1 X_1 + \beta_2 X_2 + \cdots
+$$
+
+with **plus** signs. The coefficients will have opposite signs but the model is mathematically equivalent. The interpretation below uses the **R convention** (minus signs), where a **positive** $\beta$ means $X$ increases the likelihood of being in a **higher** category.
+
+Always check which convention our software uses before interpreting coefficients!
+</details>
+
+### 4.5.2 Breaking Down the Components
+
+**Multiple intercepts ($\alpha_j$) — one per boundary:**
+
+With 3 categories (Unlikely, Somewhat Likely, Very Likely), there are 2 boundaries:
+
+- $\alpha_1$: threshold between "Unlikely" and "Somewhat Likely"
+- $\alpha_2$: threshold between "Somewhat Likely" and "Very Likely"
+
+These intercepts must be ordered: $\alpha_1 < \alpha_2$. They represent where the "cutpoints" fall on the underlying latent scale when all predictors are zero.
+
+**Single set of slopes ($\beta$'s) — same for all boundaries:**
+
+This is the crucial part: the effect of each predictor is the **same** regardless of which boundary you're looking at. The effect of GPA on moving from "Unlikely" to "Somewhat Likely or above" is the same as its effect on moving from "Somewhat Likely or below" to "Very Likely."
+
+This is called the **proportional odds assumption** (Section 4.7).
+
+### 4.5.3 How to Read the Model: Two Parallel S-Curves
+
+Imagine plotting two sigmoid curves, one for each boundary:
+
+```
+P(Y ≤ j)
+1.0 |  ______________________          ______________________
+    | /                                /
+    |/   ← Curve 1: P(Y ≤ 1)        / ← Curve 2: P(Y ≤ 2)
+0.5 |                               /
+    |                              /
+    |                             /
+0.0 |                    ________/
+    +-----|-----|-----|-----|-----|→ X (e.g., GPA)
+        low                  high
+```
+
+- **Curve 1** gives $P(Y \leq 1)$, i.e., $P(\text{Unlikely})$
+- **Curve 2** gives $P(Y \leq 2)$, i.e., $P(\text{Unlikely or Somewhat Likely})$
+
+The curves have the **same shape** (same slope $\beta$) but are **shifted horizontally** (different intercepts $\alpha_j$). This is what "parallel" means—and it's visually what the proportional odds assumption looks like.
+
+The **vertical distance** between the curves at any given $X$ tells us the probability of being in each category:
+
+- $P(\text{Unlikely}) = P(Y \leq 1)$
+- $P(\text{Somewhat Likely}) = P(Y \leq 2) - P(Y \leq 1)$
+- $P(\text{Very Likely}) = 1 - P(Y \leq 2)$
+
+### 4.5.4 Connecting to Something You Know
+
+Think of it this way. In **simple linear regression**:
+
+$$
+Y = \beta_0 + \beta_1 X
+$$
+
+You have one intercept and one slope. In **ordinal logistic regression**:
+
+$$
+\text{logit}(P(Y \leq j)) = \alpha_j - \beta_1 X
+$$
+
+You have **multiple intercepts** (one per boundary) but still **one slope** per predictor. It's like drawing multiple parallel lines (or, more accurately, parallel S-curves), where each line represents a different category threshold.
+
+---
+
+## 4.6 Maximum Likelihood Estimation (How the Computer Finds the Best Model)
+
+### 4.6.1 Why We Can't Use Least Squares Anymore
+
+In linear regression, you minimized the Sum of Squared Errors (SSE) to find $\beta_0$ and $\beta_1$. That worked because our outcome was continuous and errors were (approximately) normally distributed.
+
+With ordered categories, squaring errors doesn't make sense. The "error" between predicting category 2 and observing category 3 isn't the same kind of thing as the error between predicting \$350k and observing \$400k.
+
+### 4.6.2 The Intuition of Maximum Likelihood
+
+Instead of minimizing errors, we **maximize likelihood**—we find the coefficients that make the **observed data most probable**.
+
+For each student in the dataset, the model predicts a probability for each category. For example, Student A's predicted probabilities might be:
+
+| | Unlikely | Somewhat Likely | Very Likely |
+|---|---|---|---|
+| Student A (observed: Somewhat Likely) | 0.20 | **0.55** | 0.25 |
+| Student B (observed: Very Likely) | 0.10 | 0.30 | **0.60** |
+
+The **likelihood** for Student A is 0.55 (the probability the model assigned to what actually happened). For Student B, it's 0.60. The overall likelihood is the product of all individual likelihoods.
+
+**Maximum Likelihood Estimation (MLE)** finds the $\alpha$'s and $\beta$'s that make this product as large as possible.
+
+### 4.6.3 Why There's No Simple Formula
+
+Unlike OLS regression, where you can calculate $\beta_1$ with a neat formula (Section 1.4.4 of Part 1), MLE has **no closed-form solution**. The computer uses iterative optimization—it starts with a guess, calculates the likelihood, adjusts the coefficients, and repeats until it converges on the best answer. This is why you sometimes see "convergence" warnings in software output.
+
+### 4.6.4 Log-Likelihood
+
+In practice, we work with the **log-likelihood** rather than the likelihood itself, because:
+
+1. Multiplying hundreds of small probabilities causes numerical problems (numbers become too small for computers to handle)
+2. Taking the logarithm turns multiplication into addition, which is computationally easier
+3. Maximizing the log-likelihood gives the same answer as maximizing the likelihood (logarithm is a monotonically increasing function)
+
+The log-likelihood is always **negative** (since the log of a probability between 0 and 1 is negative). A log-likelihood **closer to zero** means a better fit.
+
+---
+
+## 4.7 Reading the Output: A Worked Example
+
+### 4.7.1 The Dataset
+
+Researchers ask 400 college juniors: *"How likely are you to apply to graduate school?"* with responses:
+
+- 1 = Unlikely (220 students)
+- 2 = Somewhat Likely (140 students)
+- 3 = Very Likely (40 students)
+
+Predictors:
+- **pared**: Whether at least one parent has a graduate degree (0 = No, 1 = Yes)
+- **public**: Whether the undergraduate institution is public (0 = Private, 1 = Public)
+- **gpa**: Student's grade point average (continuous, 1.9 to 4.0)
+
+### 4.7.2 The Output
+
+After fitting the proportional odds model, software produces:
+
+**Coefficients:**
+
+| Predictor | Coefficient ($\beta$) | Std. Error | t-value |
+|---|---|---|---|
+| pared | 1.0477 | 0.266 | 3.942 |
+| public | −0.0588 | 0.298 | −0.197 |
+| gpa | 0.6159 | 0.261 | 2.363 |
+
+**Intercepts (Thresholds):**
+
+| Boundary | $\alpha_j$ | Std. Error | t-value |
+|---|---|---|---|
+| Unlikely \| Somewhat Likely | 2.204 | 0.780 | 2.827 |
+| Somewhat Likely \| Very Likely | 4.299 | 0.804 | 5.345 |
+
+### 4.7.3 Writing Out the Equations
+
+This gives us two equations (one per boundary):
+
+$$
+\text{logit}\big(P(Y \leq \text{Unlikely})\big) = 2.204 - 1.048 \times \text{pared} - (-0.059) \times \text{public} - 0.616 \times \text{gpa}
+$$
+
+$$
+\text{logit}\big(P(Y \leq \text{Somewhat Likely})\big) = 4.299 - 1.048 \times \text{pared} - (-0.059) \times \text{public} - 0.616 \times \text{gpa}
+$$
+
+Notice: the **intercepts differ** ($2.204$ vs. $4.299$) but the **slopes are identical** ($1.048$, $-0.059$, $0.616$). This is the proportional odds assumption in action.
+
+### 4.7.4 P-Values
+
+Software may not provide p-values by default. They can be obtained by comparing the t-values to a standard normal distribution (valid for large samples):
+
+| Predictor | Coefficient | p-value | Significant? |
+|---|---|---|---|
+| pared | 1.0477 | < 0.001 | ✓ Yes |
+| public | −0.0588 | 0.843 | ✗ No |
+| gpa | 0.6159 | 0.018 | ✓ Yes |
+
+**Interpretation**: Parental education and GPA significantly predict likelihood of applying to graduate school. Whether the school is public or private does not.
+
+---
+
+## 4.8 Interpreting the Coefficients: Three Ways
+
+The raw coefficients are in **log-odds units**, which are not intuitive. Here are three ways to interpret them, from most technical to most accessible.
+
+### 4.8.1 Way 1: Log-Odds (Technically Correct, Humanly Useless)
+
+> "A one-unit increase in GPA increases the log cumulative odds of being in a higher application category by 0.616."
+
+Accurate, but nobody outside a statistics classroom finds this useful.
+
+### 4.8.2 Way 2: Odds Ratios (The Standard Reporting Method)
+
+Exponentiate the coefficients to get **odds ratios (OR)**:
+
+$$
+\text{OR} = e^{\beta}
+$$
+
+| Predictor | $\beta$ | $\text{OR} = e^{\beta}$ | 95% CI |
+|---|---|---|---|
+| pared | 1.0477 | **2.85** | [1.70, 4.82] |
+| public | −0.0588 | **0.94** | [0.52, 1.68] |
+| gpa | 0.6159 | **1.85** | [1.11, 3.10] |
+
+**How to read odds ratios:**
+
+| OR Value | Meaning |
+|---|---|
+| OR = 1.00 | No effect |
+| OR > 1 | Higher $X$ → higher odds of being in a higher category |
+| OR < 1 | Higher $X$ → lower odds of being in a higher category |
+
+**Interpretations:**
+
+- **pared (OR = 2.85)**: Students whose parents attended graduate school have **2.85 times the odds** of being in a higher application category (i.e., "Very Likely" or "Somewhat Likely" vs. "Unlikely") compared to students whose parents did not, holding GPA and school type constant.
+
+  Equivalently: "The odds of being more likely to apply are 185% higher for students with college-educated parents." (Because $(2.85 - 1) \times 100\% = 185\%$.)
+
+- **public (OR = 0.94)**: Being at a public school is associated with a **6% decrease** in odds of being in a higher application category, but this is **not statistically significant** ($p = 0.843$; the confidence interval includes 1.00). We cannot conclude there is any real effect.
+
+- **gpa (OR = 1.85)**: For every one-unit increase in GPA, the odds of being in a higher application category **multiply by 1.85** (an 85% increase), holding other variables constant.
+
+<details>
+<summary><b>💡 Two Equivalent Ways to State the Odds Ratio for pared</b></summary>
+
+Both are correct:
+
+1. *"Students whose parents attended college have 2.85 times the odds of being more likely to apply, compared to students whose parents did not."* (Easier — avoids double negation)
+
+2. *"Students whose parents did NOT attend college have 2.85 times the odds of being less likely to apply, compared to students whose parents did."* (Logically equivalent, but harder to parse)
+
+**Recommendation**: Use interpretation 1. It avoids the confusing "higher odds of being less likely" phrasing.
+</details>
+
+### 4.8.3 Way 3: Predicted Probabilities (Most Intuitive for Communication)
+
+The most accessible interpretation converts model output into actual predicted probabilities for specific scenarios.
+
+**Example**: What are the predicted probabilities for a student with GPA = 3.5, parents without graduate degrees, at a private school?
+
+Using the model equations:
+
+**Step 1**: Calculate the linear predictor component (shared across boundaries):
+
+$$
+\beta_1 \times \text{pared} + \beta_2 \times \text{public} + \beta_3 \times \text{gpa} = 1.048(0) + (-0.059)(0) + 0.616(3.5) = 2.156
+$$
+
+**Step 2**: Calculate logit for each boundary:
+
+$$
+\text{logit}\big(P(Y \leq 1)\big) = 2.204 - 2.156 = 0.048
+$$
+
+$$
+\text{logit}\big(P(Y \leq 2)\big) = 4.299 - 2.156 = 2.143
+$$
+
+**Step 3**: Convert log-odds to cumulative probabilities using $P = \frac{e^{\text{logit}}}{1 + e^{\text{logit}}}$:
+
+$$
+P(Y \leq 1) = \frac{e^{0.048}}{1 + e^{0.048}} = \frac{1.049}{2.049} = 0.512
+$$
+
+$$
+P(Y \leq 2) = \frac{e^{2.143}}{1 + e^{2.143}} = \frac{8.525}{9.525} = 0.895
+$$
+
+**Step 4**: Get individual category probabilities:
+
+| Category | Cumulative $P(Y \leq j)$ | Individual $P(Y = j)$ |
+|---|---|---|
+| Unlikely | 0.512 | $0.512$ |
+| Somewhat Likely | 0.895 | $0.895 - 0.512 = 0.383$ |
+| Very Likely | 1.000 | $1.000 - 0.895 = 0.105$ |
+
+**Plain-English**: "A private-school student with GPA 3.5 and parents without graduate degrees has about a 51% chance of being unlikely to apply, 38% chance of being somewhat likely, and 11% chance of being very likely."
+
+Now compare: same student, but **parents have graduate degrees** (pared = 1):
+
+The linear predictor becomes: $1.048(1) + (-0.059)(0) + 0.616(3.5) = 3.204$
+
+| Category | Cumulative $P(Y \leq j)$ | Individual $P(Y = j)$ |
+|---|---|---|
+| Unlikely | $\frac{e^{2.204 - 3.204}}{1 + e^{2.204 - 3.204}} = \frac{e^{-1.0}}{1+e^{-1.0}} = 0.269$ | $0.269$ |
+| Somewhat Likely | $\frac{e^{4.299 - 3.204}}{1+e^{4.299 - 3.204}} = \frac{e^{1.095}}{1+e^{1.095}} = 0.749$ | $0.749 - 0.269 = 0.480$ |
+| Very Likely | $1.000$ | $1.000 - 0.749 = 0.251$ |
+
+**Plain-English**: "When a parent has a graduate degree (holding GPA and school type the same), the probability of 'Unlikely' drops from 51% to 27%, and 'Very Likely' rises from 11% to 25%."
+
+This is what you'd present to a non-technical audience or a supervisor.
+
+---
+
+## 4.9 The Proportional Odds Assumption (The Big Assumption)
+
+### 4.9.1 What It Means
+
+The proportional odds assumption (also called the **parallel lines** or **parallel slopes** assumption) says:
+
+> *"The effect of each predictor is the same regardless of which category boundary you're looking at."*
+
+In our example, the effect of having an educated parent on moving from "Unlikely" to "Somewhat Likely or above" is the **same** as the effect of moving from "Somewhat Likely or below" to "Very Likely."
+
+Mathematically: the $\beta$'s don't get separate subscripts for each boundary $j$. There's one $\beta_{\text{pared}}$, not $\beta_{\text{pared}, j=1}$ and $\beta_{\text{pared}, j=2}$.
+
+### 4.9.2 Why It's Often Unrealistic But Useful
+
+In reality, a predictor's effect might differ at different boundaries. For instance, GPA might strongly distinguish between "Unlikely" and "Somewhat Likely" (the difference between disengaged and interested students) but barely distinguish between "Somewhat Likely" and "Very Likely" (once you're interested, GPA matters less).
+
+But we accept the assumption because:
+
+1. **Interpretability**: One coefficient per predictor is clean and simple
+2. **Statistical power**: Fewer parameters to estimate → more precise estimates
+3. **Mild violations** often don't dramatically change conclusions
+
+### 4.9.3 How to Check the Assumption
+
+**Method 1: Formal statistical tests**
+
+The **Brant test** evaluates whether the proportional odds assumption holds:
+- $H_0$: Proportional odds assumption holds (slopes are equal across boundaries)
+- $H_A$: Slopes differ across boundaries
+- If $p < 0.05$: Assumption may be violated for that predictor
+
+**Method 2: Visual/informal comparison**
+
+Fit separate binary logistic regressions at each cutpoint and compare coefficients:
+
+| | Binary Model: $Y \geq 2$ vs. $Y < 2$ | Binary Model: $Y \geq 3$ vs. $Y < 3$ |
+|---|---|---|
+| pared | 1.14 | 1.09 |
+| public | −0.20 | −0.18 |
+| gpa | 0.48 | 0.77 |
+
+If coefficients are **similar** across models, the assumption holds. Here:
+- **pared**: 1.14 vs. 1.09 → very similar ✓
+- **public**: −0.20 vs. −0.18 → very similar ✓
+- **gpa**: 0.48 vs. 0.77 → somewhat different ⚠️ (might warrant further investigation)
+
+Another way to assess this visually: for each predictor and each level, calculate the log-odds of $Y \geq j$. If the distances between the log-odds are roughly constant across levels of the predictor, the assumption holds.
+
+### 4.9.4 What If the Assumption Fails?
+
+| Violation Severity | Action |
+|---|---|
+| **Mild** (coefficients slightly different, Brant test barely significant) | Keep proportional odds model; note the limitation |
+| **Moderate** | Consider a **partial proportional odds model** (allow specific predictors to have different slopes at each boundary) |
+| **Severe** (coefficients have opposite signs at different boundaries) | Use **multinomial logistic regression** (Part 5), which makes no ordering assumption—but you lose the ordering information |
+| **Alternative** | Collapse categories to reduce boundaries, then re-test |
+
+**Always report** whether you tested the assumption and what you found, even if you decide to proceed.
+
+---
+
+## 4.10 Model Evaluation: "Is This Model Any Good?"
+
+### 4.10.1 There Is No $R^2$ in Logistic Regression
+
+In linear regression, $R^2$ told you the proportion of variance explained. For ordered categorical outcomes, there's no direct equivalent. You **cannot** calculate "proportion of variance explained" when our outcome is discrete categories.
+
+### 4.10.2 Pseudo $R^2$ Measures
+
+Several "pseudo" $R^2$ measures approximate the idea:
+
+**McFadden's Pseudo $R^2$:**
+
+$$
+R^2_{\text{McFadden}} = 1 - \frac{\text{Log-Likelihood (full model)}}{\text{Log-Likelihood (null model)}}
+$$
+
+- The **null model** predicts using only the intercepts (no predictors)
+- The **full model** includes our predictors
+- Values of 0.2–0.4 are considered **excellent** (don't expect values near 1.0!)
+
+**Nagelkerke's $R^2$**: A rescaled version that ranges from 0 to 1.
+
+**Rule of thumb**: Don't obsess over pseudo $R^2$. Low values don't necessarily mean a bad model—binary and ordinal outcomes are inherently unpredictable because individual variation is large. Focus on whether predictors are significant and whether predictions are useful.
+
+### 4.10.3 Deviance and AIC
+
+**Residual Deviance**: $-2 \times \text{Log-Likelihood}$. Lower is better. Compare to the null deviance (no predictors) to see if our model improves over guessing.
+
+**AIC (Akaike Information Criterion)**: Balances fit and complexity.
+
+$$
+\text{AIC} = -2 \times \text{Log-Likelihood} + 2k
+$$
+
+where $k$ is the number of parameters. Lower AIC = better. Use AIC to **compare models** (e.g., does adding a predictor improve the model enough to justify the added complexity?).
+
+### 4.10.4 Confusion Matrix for Ordered Categories
+
+Assign each observation the **predicted category** (the one with the highest predicted probability) and compare to the actual category:
+
+|  | Predicted: Unlikely | Predicted: Somewhat Likely | Predicted: Very Likely |
+|---|---|---|---|
+| **Actual: Unlikely** | 200 | 18 | 2 |
+| **Actual: Somewhat Likely** | 85 | 50 | 5 |
+| **Actual: Very Likely** | 12 | 20 | 8 |
+
+**What to look for:**
+- Diagonal = correct predictions
+- Off-diagonal = errors
+- **How far off?** Predicting "Unlikely" when truth is "Somewhat Likely" (off by 1) is less bad than predicting "Unlikely" when truth is "Very Likely" (off by 2)
+
+### 4.10.5 Useful Metrics
+
+| Metric | What It Measures | How to Calculate |
+|---|---|---|
+| **Exact accuracy** | % of predictions exactly correct | $\frac{\text{Correct}}{\text{Total}}$ |
+| **Adjacent accuracy** | % of predictions within ±1 category | $\frac{\text{Correct or off by 1}}{\text{Total}}$ |
+| **MAE** | Average distance between predicted and actual category | Assign numbers to categories, compute mean $\lvert\text{predicted} - \text{actual}\rvert$ |
+
+**Warning about accuracy with imbalanced data**: If 55% of respondents say "Unlikely," a model that always predicts "Unlikely" gets 55% accuracy. our model needs to beat this **baseline** to be useful.
+
+---
+
+## 4.11 Assumption Checking Checklist
+
+| Assumption | What to Check | How to Check |
+|---|---|---|
+| **Proportional Odds** | Effect of each predictor is the same across all category boundaries | Brant test; compare separate binary logistic models (Section 4.9.3) |
+| **Independence** | Observations are independent (no clustering, no repeated measures) | Study design review—is the data from individuals or clusters? |
+| **No Multicollinearity** | Predictors are not too highly correlated with each other | Variance Inflation Factor (VIF) for each predictor; VIF > 5 is concerning |
+| **Adequate Sample Size** | Enough observations per category | Rule of thumb: at least 10 events per predictor per category |
+| **No Perfect Separation** | No predictor perfectly predicts the outcome | Check if any predictor value is associated with only one category |
+| **Linearity in the Logit** | Continuous predictors have a linear relationship with the log-odds | Plot log-odds vs. predictor; use Box-Tidwell test |
+
+**Most critical for survey data**: Proportional odds and independence. If our survey involves clustered respondents (e.g., students within classrooms), standard ordinal logistic regression will underestimate standard errors.
+
+---
+
+## 4.12 A Larger Example: Educational Intergenerational Transmission
+
+### 4.12.1 Research Question
+
+Does parents' education level affect their children's education level? Using data from the 2016 China Family Panel Studies (CFPS), researchers examined:
+
+**Outcome** (ordered, 5 levels): Child's education — (1) Primary or below, (2) Junior secondary, (3) Senior secondary, (4) College/Associate, (5) Bachelor's or above
+
+**Predictors:**
+- Father's education level (edu_f, 1–5)
+- Mother's education level (edu_m, 1–5)
+- Child's sex (0 = Female, 1 = Male)
+- Number of siblings
+- Urban/rural (0 = Rural, 1 = Urban)
+
+### 4.12.2 Results
+
+| Predictor | $\beta$ | OR ($e^{\beta}$) | Interpretation |
+|---|---|---|---|
+| Father's education | 0.461 | **1.59** | Each level increase in father's education multiplies the odds of the child being in a higher education category by 1.59 (59% increase) |
+| Mother's education | 0.507 | **1.66** | Each level increase in mother's education multiplies the odds by 1.66 (66% increase) |
+| Sex (Male = 1) | −0.461 | **0.63** | Males have 37% lower odds of being in a higher education category compared to females |
+| Number of siblings | −0.154 | **0.86** | Each additional sibling decreases the odds by 14% |
+| Urban (= 1) | 0.957 | **2.60** | Urban children have 2.60 times the odds of being in a higher education category compared to rural children |
+
+### 4.12.3 What This Tells Us
+
+1. **Mother's education** ($\text{OR} = 1.66$) has a slightly larger effect than **father's education** ($\text{OR} = 1.59$)
+2. **Urban/rural divide** is the largest effect ($\text{OR} = 2.60$)
+3. **Females** are more likely to reach higher education categories than males (or equivalently, females have 1/0.63 = 1.59 times the odds of males)
+4. **More siblings** = lower odds of higher education (resources divided)
+
+### 4.12.4 The Four Equations
+
+With 5 ordinal categories, there are 4 boundary equations. Writing out just one (e.g., $P(Y \leq 3)$, the probability of being at senior secondary or below):
+
+$$
+\text{logit}\big(P(Y \leq 3)\big) = 2.509 - 0.461 \times \text{edu\_f} - 0.507 \times \text{edu\_m} + 0.461 \times \text{sex} + 0.154 \times \text{siblings} - 0.957 \times \text{urban}
+$$
+
+The other three equations are identical except the intercept changes to $-0.839$, $0.674$, or $3.545$.
+
+---
+
+## 4.13 Common Mistakes and How to Avoid Them
+
+| Mistake | Why It's Wrong | What to Do Instead |
+|---|---|---|
+| Treating Likert items as continuous in linear regression | Assumes equal spacing, can predict impossible values | Use ordinal logistic regression |
+| Ignoring the proportional odds assumption | our single set of slopes may be misleading if the assumption fails | Always test (Brant test or visual comparison) |
+| Interpreting coefficients as probabilities | A coefficient of 1.05 does NOT mean "105% probability increase" | Convert to odds ratios ($e^{1.05} = 2.86$), or compute predicted probabilities |
+| Confusing the sign convention | R's `polr` uses minus signs; Stata and SPSS use plus signs | Check our software's documentation; same model, opposite coefficient signs |
+| Reporting only $p$-values without effect sizes | A "significant" predictor with OR = 1.02 is practically meaningless | Always report odds ratios and confidence intervals alongside $p$-values |
+| Claiming causation from survey data | Ordinal regression shows *association*, not causation | Use language like "associated with," "predicts," "corresponds to" |
+
+---
+
+## 4.14 Decision Framework: When to Use What
+
+### Use Ordinal Logistic Regression When:
+
+- ✓ Outcome has a **natural ordering** (Likert scales, ratings, severity levels, education levels)
+- ✓ **3–7 categories** (too few → consider binary; too many → consider treating as continuous)
+- ✓ Proportional odds assumption holds (or violations are minor)
+- ✓ Observations are independent
+- ✓ Adequate sample size (≥10 events per predictor per category as a rough guide)
+
+### Don't Use It When:
+
+| Situation | Use Instead |
+|---|---|
+| Outcome is **continuous** (actual numbers: income, height, test score) | Linear regression (Part 1) |
+| Outcome is **binary** (Yes/No, Pass/Fail) | Binary logistic regression (Part 3) |
+| Outcome has **no inherent order** (Major: Arts, Science, Engineering) | Multinomial logistic regression (Part 5) |
+| Proportional odds severely violated | Multinomial logistic or partial proportional odds |
+| Observations are clustered (students in schools) | Multilevel ordinal models (advanced) |
+
+### Survey Applications (Perfect For):
+
+- Agreement scales: Strongly Disagree → Strongly Agree
+- Satisfaction ratings: Very Dissatisfied → Very Satisfied
+- Frequency scales: Never → Always
+- Performance levels: Poor → Excellent
+- Likelihood scales: Very Unlikely → Very Likely
+- Risk assessments: Low → Medium → High
+
+---
+
+## 4.15 Quick Reference Summary
+
+### The Model
+
+$$
+\text{logit}\big(P(Y \leq j)\big) = \alpha_j - \beta_1 X_1 - \beta_2 X_2 - \cdots
+$$
+
+for each boundary $j = 1, \ldots, J-1$.
+
+### Key Facts
+
+| Concept | What It Is |
+|---|---|
+| **Outcome** | Ordered categories (3+ levels) |
+| **Intercepts ($\alpha_j$)** | One per category boundary; must be ordered |
+| **Slopes ($\beta$)** | One per predictor; same across all boundaries (proportional odds) |
+| **Odds Ratio** | $\text{OR} = e^{\beta}$; multiplicative change in odds of being in a higher category per unit increase in $X$ |
+| **Estimation** | Maximum Likelihood (not OLS) |
+| **Key Assumption** | Proportional odds: effect is constant across boundaries |
+| **Model Comparison** | AIC, deviance, pseudo $R^2$ |
+
+### Interpretation Template
+
+> "For every one-unit increase in [predictor], the odds of being in a higher [outcome] category are multiplied by [OR], holding all other variables constant."
+
+> Example: "For every one-unit increase in GPA, the odds of being more likely to apply to graduate school are multiplied by 1.85 (85% increase), holding parental education and school type constant."
+
+---
+
+## 4.16 Proper Language for Reporting
+
+**DON'T SAY:**
+- "GPA causes students to be more likely to apply"
+- "Parental education determines application likelihood"
+- "The probability increases by 1.05"
+
+**DO SAY:**
+- "Higher GPA is **associated with** greater likelihood of applying"
+- "Students with college-educated parents had **significantly higher odds** of being in a higher application category (OR = 2.85, 95% CI [1.70, 4.82], $p < 0.001$)"
+- "Mother's education showed a **slightly larger effect** (OR = 1.66) than father's education (OR = 1.59) on children's educational attainment"
+- "Urban residence was the **strongest predictor**, with urban children having 2.60 times the odds of being in a higher education category compared to rural children"
+
+### 4.17 Reference
+
+ 
+1.	UCLA (Ordinal Logistic Regression | R Data Analysis Examples): https://stats.oarc.ucla.edu/r/dae/ordinal-logistic-regression/
+2.	Sichuan Normal University (In Chinese, covers the "intergenerational transmission of educational human capital" example): https://bookdown.org/wangminjie/R4DS/tidystats-ordinal.html
